@@ -1,6 +1,6 @@
 {
   "name": "@sudobility/subscription_service",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "author": "Sudobility",
   "main": "./dist/index.js",
   "devDependencies": {
