@@ -1,10 +1,10 @@
 {
   "name": "@sudobility/subscription_service",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "author": "Sudobility",
   "main": "./dist/index.js",
   "devDependencies": {
-    "@sudobility/types": "^1.9.68",
+    "@sudobility/types": "^1.9.71",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
