@@ -1,217 +1,93 @@
 # Subscription Service - AI Development Guide
 
-> **Git policy — never auto-commit or auto-push.** Leave your work in the working tree.
-> Run `git commit`, `git push`, `gh pr create`, or `scripts/push_all.sh` **only when the user
-> explicitly asks in that turn**. Approval for an earlier change does not carry forward, and
-> finishing a task is not permission to commit it.
+> **Git policy — never auto-commit or auto-push.** Leave work in the working tree.
+> Run `git commit`, `git push`, `gh pr create`, or `scripts/push_all.sh` **only when
+> the user explicitly asks in that turn**. Approval for an earlier change does not
+> carry forward, and finishing a task is not permission to commit it.
+> Stay on the current branch; do not create feature branches for code changes.
 
-## Overview
+## What this is
 
-Shared backend library for subscription management using RevenueCat. Provides a `SubscriptionHelper` class that calls the RevenueCat REST API v1 to fetch user entitlements and subscription information. Designed for server-side use only (requires a secret API key).
+`@sudobility/subscription_service` — a small, server-side TypeScript library that
+wraps the RevenueCat REST API v1 (`GET /subscribers/{user_id}`) to return a user's
+active entitlements and subscription details. One public class: `SubscriptionHelper`.
 
-- **Package**: `@sudobility/subscription_service`
-- **Version**: 1.0.5
-- **License**: BUSL-1.1
-- **Package Manager**: Bun (do not use npm/yarn/pnpm for installing dependencies)
-- **Registry**: npm (public, `@sudobility` scope)
+- **Stack**: TypeScript (strict, ES2020), ESM-only output, Bun package manager,
+  Vitest tests, ESLint + Prettier.
+- **No runtime `dependencies`**; all HTTP uses native `fetch`.
+- **License**: BUSL-1.1.
 
-## Project Structure
-
-```
-src/
-├── index.ts                    # Main barrel exports
-├── types/
-│   ├── index.ts                # Type re-exports
-│   ├── entitlements.ts         # RevenueCat API response types
-│   └── subscription.ts         # SubscriptionInfo type
-└── helpers/
-    ├── index.ts                # Helper re-exports
-    └── SubscriptionHelper.ts   # RevenueCat API client class
-tests/
-└── SubscriptionHelper.test.ts  # Vitest tests (mocked fetch)
-```
-
-## Key Exports
-
-| Export | Type | Description |
-|---|---|---|
-| `SubscriptionHelper` | class | Main API client for RevenueCat entitlements |
-| `SubscriptionHelperConfig` | interface | Config with `revenueCatApiKey` and optional `baseUrl` |
-| `SubscriptionInfo` | interface | Return type with `entitlements` and `subscriptionStartedAt` |
-| `RevenueCatEntitlement` | interface | Raw entitlement from RevenueCat API |
-| `RevenueCatSubscription` | interface | Raw subscription from RevenueCat API |
-| `RevenueCatSubscriberResponse` | interface | Full subscriber response shape |
-
-## Development Commands
+## Commands (all verified)
 
 ```bash
-bun run build        # Build ESM (tsc -p tsconfig.esm.json)
-bun run clean        # Remove dist/
-bun run dev          # Watch mode (tsc --watch)
-bun test             # Run tests (vitest run)
-bun run test:watch   # Watch mode tests (vitest)
-bun run lint         # Run ESLint (eslint src/)
-bun run lint:fix     # ESLint auto-fix
-bun run typecheck    # TypeScript check (tsc --noEmit)
-bun run format       # Prettier format
-bun run format:check # Prettier check
-bun run verify       # All checks + build (typecheck -> lint -> test -> build)
-npm publish          # Publish to npm (public @sudobility scope)
-```
-
-## Key Concepts
-
-### SubscriptionHelper
-
-Fetches user entitlements from RevenueCat API v1 (`GET /subscribers/{user_id}`).
-
-- Uses RevenueCat secret API key (server-side only)
-- Supports `testMode` to include/exclude sandbox purchases
-- Returns `["none"]` (the `NONE_ENTITLEMENT` constant from `@sudobility/types`) if user has no active entitlements
-- Tracks the earliest `purchase_date` across all active entitlements as `subscriptionStartedAt`
-
-### Methods
-
-| Method | Signature | Description |
-|---|---|---|
-| `getEntitlements` | `(userId, testMode?) => Promise<string[]>` | Get active entitlement names |
-| `getSubscriptionInfo` | `(userId, testMode?) => Promise<SubscriptionInfo>` | Get entitlements + subscription start date |
-
-### testMode Parameter
-
-- `testMode=true`: Accept sandbox purchases (for testing)
-- `testMode=false` (default): Reject sandbox purchases (production)
-
-The helper checks each subscription's `sandbox` flag and filters accordingly.
-
-## Usage
-
-```typescript
-import { SubscriptionHelper } from "@sudobility/subscription_service";
-import { NONE_ENTITLEMENT } from "@sudobility/types";
-
-const helper = new SubscriptionHelper({
-  revenueCatApiKey: process.env.REVENUECAT_API_KEY!,
-});
-
-// Get entitlements (production mode - no sandbox)
-const entitlements = await helper.getEntitlements(userId);
-// Returns: ["pro"] or ["none"]
-
-// Get entitlements (test mode - includes sandbox)
-const testEntitlements = await helper.getEntitlements(userId, true);
-
-// Get full subscription info
-const info = await helper.getSubscriptionInfo(userId, testMode);
-// Returns: { entitlements: ["pro"], subscriptionStartedAt: Date | null }
-
-// Check if user has a subscription
-if (!info.entitlements.includes(NONE_ENTITLEMENT)) {
-  // User has active subscription
-}
+bun install          # needs GitHub Packages auth (see Registry gotcha)
+bun run typecheck    # tsc --noEmit
+bun run lint         # eslint src/
+bun run test:unit    # vitest run   <-- use this, NOT `bun test`
+bun run build        # tsc -p tsconfig.esm.json + scripts/fix-esm-imports.mjs -> dist/
+bun run verify       # typecheck -> lint -> test:unit -> build  (pre-commit gate)
+bun run format       # prettier --write
 ```
 
 ## Architecture
 
-### TypeScript Configuration
-
-- Base `tsconfig.json`: strict mode, ES2020 target, bundler module resolution, `noEmit: true`
-- `tsconfig.esm.json`: extends base, adds ESNext module output to `./dist`, declaration + declarationMap + sourceMap
-- `tsconfig.cjs.json`: exists but build script uses ESM config only
-
-### Build Output
-
-- ESM-only output to `./dist/`
-- Declaration files (`.d.ts`) and declaration maps (`.d.ts.map`) included
-- Source maps enabled
-- Published files: `dist/**/*` and `CLAUDE.md`
-
-### Dependency Graph
-
 ```
-@sudobility/types (peer dependency - provides NONE_ENTITLEMENT)
-    |
-subscription_service (this package)
-    ^
-ratelimit_service (depends on this)
-    ^
-shapeshyft_api, sudojo_api, whisperly_api
+src/
+  index.ts                      # barrel: re-exports types + helper + NONE_ENTITLEMENT
+  types/entitlements.ts         # RevenueCat* API response interfaces
+  types/subscription.ts         # SubscriptionInfo (library's return shape)
+  helpers/SubscriptionHelper.ts # the only logic: fetch + filter + map
+tests/SubscriptionHelper.test.ts # Vitest, fetch fully mocked
+scripts/fix-esm-imports.mjs     # post-build: adds .js to relative import specifiers
 ```
 
-## Consuming APIs
+`SubscriptionHelper.getSubscriptionInfo()` is the core. It fetches the subscriber,
+then for each entitlement:
+1. Drops expired ones (`expires_date` in the past; null = lifetime = active).
+2. In production (`testMode=false`) drops ones whose subscription
+   `environment === "sandbox"`.
+3. Tracks the entitlement with the **earliest** `purchase_date`; its subscription
+   supplies `platform`, `store`, `productIdentifier`, `expiresDate`, `sandbox`,
+   `willRenew`. `willRenew` is `unsubscribe_detected_at == null`.
 
-APIs using this library:
-- shapeshyft_api
-- sudojo_api
-- whisperly_api
-- ratelimit_service
+`platform` is mapped from the store via `STORE_PLATFORM_MAP`:
+`stripe`/`rc_billing` → Web, `app_store` → iOS, `play_store` → Android,
+`mac_app_store` → macOS, else `null`.
 
-## Publishing
+`getEntitlements()` is a thin wrapper returning only `info.entitlements`.
 
-```bash
-bun run verify       # All checks (typecheck -> lint -> test -> build)
-npm publish          # Publish to npm
-```
+## Key conventions
 
-## Local Dev Workflow
+- Public API is re-exported through `src/index.ts`; add new exports there.
+- Both methods throw on empty/non-string `userId`. `userId` is URL-encoded.
+- Requests use an `AbortController` timeout (`timeoutMs`, default 10s).
+- `SubscriptionInfo` return shape is the library's contract — changing/adding
+  fields affects downstream consumers; update tests to match.
 
-```bash
-# In this project:
-bun link
+## Gotchas (non-obvious)
 
-# In consuming API:
-bun link @sudobility/subscription_service
+- **`bun test` is wrong.** Bare `bun test` runs Bun's native runner, which is not
+  compatible with the Vitest globals (`vi.unstubAllGlobals`, etc.) and fails.
+  Always use `bun run test:unit`.
+- **Registry = GitHub Packages, not public npm.** `.npmrc` sets
+  `@sudobility:registry=https://npm.pkg.github.com`. `bun install` and publishing
+  need a GitHub Packages token (Actions secret `GH_PACKAGES_READ_TOKEN`).
+  Publishing is done by CI (`.github/workflows/ci-cd.yml`, reusable workflow with
+  `publish-target: github`), not manual `npm publish`.
+- **`@sudobility/types` is a runtime import but only in `devDependencies`.** It
+  provides `NONE_ENTITLEMENT` (the string `"none"`) and `SubscriptionPlatform`.
+  There is no `dependencies` or `peerDependencies` block in `package.json`.
+- **Sandbox filtering keys on `environment`, not the `sandbox` flag.** The returned
+  `sandbox` field reflects the raw `sandbox` boolean, but the production filter
+  excludes subscriptions where `environment === "sandbox"`.
+- **`NONE_ENTITLEMENT` is the string `"none"`**, never null/undefined. A 404 from
+  RevenueCat is not an error — it returns the `["none"]` result.
+- **ESM-only, no CJS.** The build is `tsconfig.esm.json` only; there is no
+  `tsconfig.cjs.json`. `fix-esm-imports.mjs` must run after `tsc` or the emitted
+  ESM has extensionless relative imports that Node won't resolve.
 
-# Rebuild after changes:
-bun run build
+## Workspace
 
-# When done, unlink:
-bun unlink @sudobility/subscription_service && bun install
-```
-
-## Peer / Key Dependencies
-
-### Peer Dependencies
-
-| Package | Version | Purpose |
-|---|---|---|
-| `@sudobility/types` | `^1.9.53` | Provides `NONE_ENTITLEMENT` constant |
-
-### Dev Dependencies
-
-| Package | Version | Purpose |
-|---|---|---|
-| `typescript` | ^5.9.0 | Compiler |
-| `vitest` | ^4.0.4 | Test runner |
-| `eslint` | ^9.39.0 | Linter |
-| `prettier` | ^3.7.0 | Formatter |
-| `@typescript-eslint/eslint-plugin` | ^8.50.0 | TS-aware ESLint rules |
-| `@typescript-eslint/parser` | ^8.50.0 | TS ESLint parser |
-| `eslint-plugin-import` | ^2.32.0 | Import order/validation rules |
-| `@types/bun` | latest | Bun runtime types |
-| `@types/node` | ^24.0.0 | Node.js type definitions |
-
-## Workspace Context
-
-This project is part of the Sudobility multi-project workspace at the parent directory. See `../CLAUDE.md` for the full architecture, dependency graph, and build order.
-
-## Pre-Commit Checklist
-
-```bash
-bun run verify    # Runs: typecheck -> lint -> test -> build
-```
-
-## Gotchas
-
-- **No runtime dependencies** -- Only `@sudobility/types` as a peer dependency (for `NONE_ENTITLEMENT`). All HTTP calls use native `fetch`.
-- **RevenueCat API key is a server-side secret** -- never expose it to the client.
-- **`testMode` controls sandbox filtering** -- in production, always pass `false`. Passing `true` includes sandbox purchases with fake entitlements.
-- **`NONE_ENTITLEMENT` is the string `"none"`** -- it is a constant imported from `@sudobility/types`, not null/undefined. Always compare with `NONE_ENTITLEMENT`.
-- **ESM-only output** -- no CJS build. The `tsconfig.cjs.json` exists but is unused by the build script.
-- **404 from RevenueCat returns `["none"]`** -- Not an error; it means the user has never been seen by RevenueCat.
-- **`baseUrl` defaults to `https://api.revenuecat.com/v1`** -- Override for testing with a mock server.
-- **User ID is URL-encoded** -- `encodeURIComponent(userId)` is applied before constructing the API URL.
-
-## Git Workflow
-
-- Do not use feature branches for code changes. Always stay on the current branch.
+Part of the Sudobility multi-project workspace (parent directory). Consumed by
+other Sudobility backend services; see `../CLAUDE.md` for the full dependency graph
+and build order. `plans/IMPROVEMENTS.md` tracks proposed enhancements.
